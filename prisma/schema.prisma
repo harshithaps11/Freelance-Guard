@@ -1,0 +1,144 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  company   String?
+  avatar    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projects      Project[]
+  timeLogs      TimeLog[]
+  invoices      Invoice[]
+  scopeRequests ScopeRequest[]
+  settings      UserSettings?
+
+  @@map("users")
+}
+
+model UserSettings {
+  id               String  @id @default(cuid())
+  userId           String  @unique
+  user             User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  hourlyRate       Float   @default(50)
+  currency         String  @default("USD")
+  monthlyGoal      Float   @default(5000)
+  darkMode         Boolean @default(false)
+  emailReminders   Boolean @default(true)
+  invoiceTemplate  String  @default("default")
+  stripePublicKey  String?
+  stripeSecretKey  String?
+  emailFrom        String?
+  emailHost        String?
+  emailPort        Int?
+  emailUser        String?
+  emailPassword    String?
+
+  @@map("user_settings")
+}
+
+model Client {
+  id      String @id @default(cuid())
+  name    String
+  email   String
+  company String?
+  phone   String?
+  address String?
+
+  projects Project[]
+
+  @@map("clients")
+}
+
+model Project {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  clientId    String
+  client      Client    @relation(fields: [clientId], references: [id])
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  status      String    @default("active") // active, completed, paused
+  type        String    @default("hourly") // hourly, fixed
+  hourlyRate  Float?
+  fixedPrice  Float?
+  startDate   DateTime
+  endDate     DateTime?
+  estimatedHours Float?
+  actualHours    Float  @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  timeLogs      TimeLog[]
+  scopeRequests ScopeRequest[]
+  invoices      Invoice[]
+
+  @@map("projects")
+}
+
+model TimeLog {
+  id          String    @id @default(cuid())
+  projectId   String
+  project     Project   @relation(fields: [projectId], references: [id])
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  description String?
+  startTime   DateTime
+  endTime     DateTime?
+  duration    Int       @default(0) // in minutes
+  isRunning   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+
+  @@map("time_logs")
+}
+
+model ScopeRequest {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id])
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  title       String
+  description String
+  estimatedHours Float
+  hourlyRate     Float
+  totalCost      Float
+  status         String @default("pending") // pending, approved, rejected
+  clientApproved Boolean @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("scope_requests")
+}
+
+model Invoice {
+  id            String   @id @default(cuid())
+  invoiceNumber String   @unique
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id])
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  amount        Float
+  hours         Float    @default(0)
+  scopeCharges  Float    @default(0)
+  status        String   @default("draft") // draft, sent, paid, overdue
+  dueDate       DateTime
+  paidAt        DateTime?
+  stripePaymentUrl String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("invoices")
+}
