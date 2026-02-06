@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -56,57 +56,28 @@ interface ScopeRequest {
   createdAt: Date
 }
 
-// Mock data
-const mockScopeRequests: ScopeRequest[] = [
-  {
-    id: '1',
-    title: 'Additional Payment Gateway Integration',
-    description: 'Client wants to add PayPal and Apple Pay in addition to the originally planned Stripe integration.',
-    project: {
-      name: 'E-commerce Website Redesign',
-      client: { name: 'TechCorp Inc.' }
-    },
-    estimatedHours: 8,
-    hourlyRate: 75,
-    totalCost: 600,
-    status: 'approved',
-    clientApproved: true,
-    createdAt: new Date('2024-01-15T10:30:00'),
-  },
-  {
-    id: '2',
-    title: 'Custom Admin Dashboard',
-    description: 'Request for a custom admin panel with advanced analytics and reporting features.',
-    project: {
-      name: 'Mobile App Development',
-      client: { name: 'StartupXYZ' }
-    },
-    estimatedHours: 20,
-    hourlyRate: 75,
-    totalCost: 1500,
-    status: 'pending',
-    clientApproved: false,
-    createdAt: new Date('2024-01-14T14:15:00'),
-  },
-  {
-    id: '3',
-    title: 'Social Media Integration',
-    description: 'Adding Instagram and Facebook sharing functionality to the app.',
-    project: {
-      name: 'Mobile App Development',
-      client: { name: 'StartupXYZ' }
-    },
-    estimatedHours: 6,
-    hourlyRate: 75,
-    totalCost: 450,
-    status: 'rejected',
-    clientApproved: false,
-    createdAt: new Date('2024-01-12T09:20:00'),
-  },
-]
-
 export default function ScopePage() {
-  const [scopeRequests, setScopeRequests] = useState(mockScopeRequests)
+  const [scopeRequests, setScopeRequests] = useState<ScopeRequest[]>([])
+  useEffect(() => {
+    fetch('/api/scope-requests')
+      .then((r) => r.json())
+      .then((rows) => {
+        const mapped: ScopeRequest[] = rows.map((req: any) => ({
+          id: req.id,
+          title: req.title,
+          description: req.description,
+          project: { name: req.project?.name || 'Unknown', client: { name: req.project?.client?.name || 'Unknown' } },
+          estimatedHours: req.estimatedHours,
+          hourlyRate: req.hourlyRate,
+          totalCost: req.totalCost,
+          status: req.status,
+          clientApproved: req.clientApproved,
+          createdAt: new Date(req.createdAt),
+        }))
+        setScopeRequests(mapped)
+      })
+      .catch(() => setScopeRequests([]))
+  }, [])
   const [showNewRequestDialog, setShowNewRequestDialog] = useState(false)
   const [newRequest, setNewRequest] = useState({
     title: '',
@@ -143,23 +114,41 @@ export default function ScopePage() {
   }
 
   const handleCreateRequest = () => {
-    const request: ScopeRequest = {
-      id: Date.now().toString(),
-      title: newRequest.title,
-      description: newRequest.description,
-      project: {
-        name: 'E-commerce Website Redesign',
-        client: { name: 'TechCorp Inc.' }
-      },
-      estimatedHours: parseFloat(newRequest.estimatedHours),
-      hourlyRate: parseFloat(newRequest.hourlyRate),
-      totalCost: parseFloat(newRequest.estimatedHours) * parseFloat(newRequest.hourlyRate),
-      status: 'pending',
-      clientApproved: false,
-      createdAt: new Date(),
-    }
-    
-    setScopeRequests(prev => [request, ...prev])
+    const totalCost = parseFloat(newRequest.estimatedHours) * parseFloat(newRequest.hourlyRate)
+    // NOTE: Demo: associate with first available project from API list
+    const exampleProjectId = (window as any).__firstProjectId
+    fetch('/api/scope-requests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: newRequest.title,
+        description: newRequest.description,
+        projectId: exampleProjectId,
+        userId: undefined,
+        estimatedHours: parseFloat(newRequest.estimatedHours),
+        hourlyRate: parseFloat(newRequest.hourlyRate),
+        totalCost,
+        status: 'pending',
+      }),
+    })
+      .then((r) => r.json())
+      .then((saved) => {
+        setScopeRequests((prev) => [
+          {
+            id: saved.id,
+            title: saved.title,
+            description: saved.description,
+            project: { name: saved.project?.name || 'Unknown', client: { name: saved.project?.client?.name || 'Unknown' } },
+            estimatedHours: saved.estimatedHours,
+            hourlyRate: saved.hourlyRate,
+            totalCost: saved.totalCost,
+            status: saved.status,
+            clientApproved: saved.clientApproved,
+            createdAt: new Date(saved.createdAt),
+          },
+          ...prev,
+        ])
+      })
     setShowNewRequestDialog(false)
     setNewRequest({
       title: '',
@@ -171,9 +160,7 @@ export default function ScopePage() {
   }
 
   const handleUpdateStatus = (id: string, status: 'approved' | 'rejected') => {
-    setScopeRequests(prev => prev.map(request =>
-      request.id === id ? { ...request, status } : request
-    ))
+    setScopeRequests(prev => prev.map(request => request.id === id ? { ...request, status } : request))
   }
 
   const handleSendEmail = (request: ScopeRequest) => {

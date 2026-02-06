@@ -1,66 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { TimeTracker } from '@/components/time/time-tracker'
 import { TimeLogs } from '@/components/time/time-logs'
-
-// Mock data
-const mockProjects = [
-  {
-    id: '1',
-    name: 'E-commerce Website Redesign',
-    client: { name: 'TechCorp Inc.' },
-  },
-  {
-    id: '2',
-    name: 'Mobile App Development',
-    client: { name: 'StartupXYZ' },
-  },
-  {
-    id: '3',
-    name: 'Brand Identity Package',
-    client: { name: 'LocalBiz' },
-  },
-]
-
-const mockTimeLogs = [
-  {
-    id: '1',
-    project: { name: 'E-commerce Website Redesign', client: { name: 'TechCorp Inc.' } },
-    description: 'Working on product page layouts and responsive design',
-    startTime: new Date('2024-01-15T09:00:00'),
-    endTime: new Date('2024-01-15T12:30:00'),
-    duration: 210, // 3.5 hours
-    isRunning: false,
-  },
-  {
-    id: '2',
-    project: { name: 'Mobile App Development', client: { name: 'StartupXYZ' } },
-    description: 'Implementing user authentication flow',
-    startTime: new Date('2024-01-15T14:00:00'),
-    endTime: new Date('2024-01-15T16:00:00'),
-    duration: 120, // 2 hours
-    isRunning: false,
-  },
-  {
-    id: '3',
-    project: { name: 'Brand Identity Package', client: { name: 'LocalBiz' } },
-    description: 'Logo design iterations and color palette development',
-    startTime: new Date('2024-01-14T10:30:00'),
-    endTime: new Date('2024-01-14T15:00:00'),
-    duration: 270, // 4.5 hours
-    isRunning: false,
-  },
-  {
-    id: '4',
-    project: { name: 'Mobile App Development', client: { name: 'StartupXYZ' } },
-    description: 'API integration and data management',
-    startTime: new Date('2024-01-13T13:00:00'),
-    endTime: new Date('2024-01-13T17:30:00'),
-    duration: 270, // 4.5 hours
-    isRunning: false,
-  },
-]
 
 export default function TimePage() {
   const [activeTimer, setActiveTimer] = useState<{
@@ -68,78 +10,86 @@ export default function TimePage() {
     startTime: Date
     description: string
   } | null>(null)
-  const [timeLogs, setTimeLogs] = useState(mockTimeLogs)
+  const [projects, setProjects] = useState<{ id: string; name: string; client: { name: string } }[]>([])
+  const [timeLogs, setTimeLogs] = useState<any[]>([])
+
+  useEffect(() => {
+    const safeFetch = async (url: string) => {
+      try {
+        const res = await fetch(url)
+        if (!res.ok) return []
+        const text = await res.text()
+        return text ? JSON.parse(text) : []
+      } catch {
+        return []
+      }
+    }
+
+    Promise.all([safeFetch('/api/projects'), safeFetch('/api/time-logs')])
+      .then(([projectsResp, logsResp]) => {
+        const proj = (projectsResp || []).map((p: any) => ({ id: p.id, name: p.name, client: { name: p.client?.name || 'Unknown' } }))
+        setProjects(proj)
+        setTimeLogs(logsResp || [])
+      })
+      .catch(() => {
+        setProjects([])
+        setTimeLogs([])
+      })
+  }, [])
 
   const handleStartTimer = (projectId: string, description: string) => {
-    setActiveTimer({
-      projectId,
-      startTime: new Date(),
-      description,
-    })
+    setActiveTimer({ projectId, startTime: new Date(), description })
   }
 
-  const handleStopTimer = (description: string) => {
+  const handleStopTimer = async (description: string) => {
     if (!activeTimer) return
-    
     const endTime = new Date()
     const duration = Math.floor((endTime.getTime() - activeTimer.startTime.getTime()) / (1000 * 60))
-    
-    const newLog = {
-      id: Date.now().toString(),
-      project: mockProjects.find(p => p.id === activeTimer.projectId)!,
+
+    const payload = {
+      projectId: activeTimer.projectId,
+      userId: undefined,
       description: description || activeTimer.description,
       startTime: activeTimer.startTime,
       endTime,
       duration,
       isRunning: false,
     }
-    
-    setTimeLogs(prev => [newLog, ...prev])
-    setActiveTimer(null)
+    try {
+      const res = await fetch('/api/time-logs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      const saved = await res.json()
+      setTimeLogs((prev) => [saved, ...prev])
+    } finally {
+      setActiveTimer(null)
+    }
   }
 
-  const handlePauseTimer = () => {
-    // For now, just stop the timer
-    // In a real app, you'd want to implement actual pause/resume logic
-  }
+  const handlePauseTimer = () => {}
 
-  const handleEditLog = (logId: string) => {
-    // TODO: Implement edit functionality
-    console.log('Edit log:', logId)
-  }
+  const handleEditLog = (logId: string) => {}
 
   const handleDeleteLog = (logId: string) => {
-    setTimeLogs(prev => prev.filter(log => log.id !== logId))
+    setTimeLogs((prev) => prev.filter((l) => l.id !== logId))
   }
 
-  const handleExportLogs = () => {
-    // TODO: Implement CSV export
-    console.log('Export logs')
-  }
+  const handleExportLogs = () => {}
 
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Time Tracker</h1>
-        <p className="text-gray-600 dark:text-gray-300 mt-1">
-          Track your time across projects and manage your work logs.
-        </p>
+        <p className="text-gray-600 dark:text-gray-300 mt-1">Track your time across projects and manage your work logs.</p>
       </div>
 
       <TimeTracker
-        projects={mockProjects}
+        projects={projects}
         activeTimer={activeTimer}
         onStartTimer={handleStartTimer}
         onStopTimer={handleStopTimer}
         onPauseTimer={handlePauseTimer}
       />
 
-      <TimeLogs
-        timeLogs={timeLogs}
-        onEdit={handleEditLog}
-        onDelete={handleDeleteLog}
-        onExport={handleExportLogs}
-      />
+      <TimeLogs timeLogs={timeLogs} onEdit={handleEditLog} onDelete={handleDeleteLog} onExport={handleExportLogs} />
     </div>
   )
 }

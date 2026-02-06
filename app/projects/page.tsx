@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -13,6 +13,7 @@ import {
   DialogTitle,
   DialogTrigger 
 } from '@/components/ui/dialog'
+import { DialogFooter } from '@/components/ui/dialog'
 import { 
   Table,
   TableBody,
@@ -61,89 +62,135 @@ interface Project {
   createdAt: Date
 }
 
-// Mock data
-const mockProjects: Project[] = [
-  {
-    id: '1',
-    name: 'E-commerce Website Redesign',
-    client: {
-      id: 'c1',
-      name: 'John Smith',
-      company: 'TechCorp Inc.',
-      email: 'john@techcorp.com'
-    },
-    description: 'Complete redesign of the company website with modern UI/UX and mobile optimization',
-    status: 'active',
-    type: 'hourly',
-    hourlyRate: 75,
-    startDate: new Date('2024-01-01'),
-    endDate: new Date('2024-02-15'),
-    estimatedHours: 80,
-    actualHours: 42.5,
-    createdAt: new Date('2023-12-15'),
-  },
-  {
-    id: '2',
-    name: 'Mobile App Development',
-    client: {
-      id: 'c2',
-      name: 'Sarah Johnson',
-      company: 'StartupXYZ',
-      email: 'sarah@startupxyz.com'
-    },
-    description: 'Native iOS and Android app for food delivery service',
-    status: 'active',
-    type: 'fixed',
-    fixedPrice: 5000,
-    startDate: new Date('2024-01-15'),
-    endDate: new Date('2024-03-01'),
-    estimatedHours: 60,
-    actualHours: 28,
-    createdAt: new Date('2024-01-10'),
-  },
-  {
-    id: '3',
-    name: 'Brand Identity Package',
-    client: {
-      id: 'c3',
-      name: 'Mike Davis',
-      company: 'LocalBiz',
-      email: 'mike@localbiz.com'
-    },
-    description: 'Complete brand identity including logo, business cards, and marketing materials',
-    status: 'completed',
-    type: 'fixed',
-    fixedPrice: 2500,
-    startDate: new Date('2023-12-01'),
-    endDate: new Date('2024-01-10'),
-    estimatedHours: 40,
-    actualHours: 38,
-    createdAt: new Date('2023-11-15'),
-  },
-  {
-    id: '4',
-    name: 'WordPress Plugin Development',
-    client: {
-      id: 'c4',
-      name: 'Emily Chen',
-      company: 'WebAgency Pro',
-      email: 'emily@webagencypro.com'
-    },
-    description: 'Custom WordPress plugin for advanced SEO management',
-    status: 'paused',
-    type: 'hourly',
-    hourlyRate: 60,
-    startDate: new Date('2023-11-15'),
-    estimatedHours: 30,
-    actualHours: 12,
-    createdAt: new Date('2023-11-10'),
-  },
-]
-
 export default function ProjectsPage() {
-  const [projects, setProjects] = useState(mockProjects)
+  const [projects, setProjects] = useState<Project[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('')
+  const [newOpen, setNewOpen] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [newProject, setNewProject] = useState({
+    name: '',
+    clientName: '',
+    clientEmail: '',
+    clientCompany: '',
+    type: 'hourly',
+    hourlyRate: '75',
+    fixedPrice: '',
+    estimatedHours: '',
+  })
+
+  useEffect(() => {
+    fetch('/api/projects')
+      .then(async (r) => {
+        const text = await r.text()
+        return text ? JSON.parse(text) : []
+      })
+      .then((rows) => {
+        const mapped: Project[] = rows.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          client: {
+            id: p.client?.id || '',
+            name: p.client?.name || 'Unknown',
+            company: p.client?.company || undefined,
+            email: p.client?.email || ''
+          },
+          description: p.description || '',
+          status: p.status,
+          type: p.type,
+          hourlyRate: p.hourlyRate || undefined,
+          fixedPrice: p.fixedPrice || undefined,
+          startDate: new Date(p.startDate),
+          endDate: p.endDate ? new Date(p.endDate) : undefined,
+          estimatedHours: p.estimatedHours || undefined,
+          actualHours: p.actualHours || 0,
+          createdAt: new Date(p.createdAt),
+        }))
+        setProjects(mapped)
+      })
+      .catch(() => setProjects([]))
+  }, [])
+
+  const handleCreate = async () => {
+    if (!newProject.name || !newProject.clientName || !newProject.clientEmail) return
+    setCreating(true)
+    try {
+      const fetchJsonSafe = async (url: string, init?: RequestInit) => {
+        try {
+          const res = await fetch(url, init)
+          if (!res.ok) return null
+          const text = await res.text()
+          try {
+            return text ? JSON.parse(text) : null
+          } catch {
+            return null
+          }
+        } catch {
+          return null
+        }
+      }
+      // ensure client exists or create minimal client
+      const client =
+        (await fetchJsonSafe('/api/clients', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: newProject.clientName,
+            email: newProject.clientEmail,
+            company: newProject.clientCompany || undefined,
+          }),
+        })) ||
+        ((await fetchJsonSafe('/api/clients')) || []).find((c: any) => c.email === newProject.clientEmail) ||
+        null
+      if (!client) throw new Error('Failed to create or find client')
+
+      const payload: any = {
+        name: newProject.name,
+        clientId: client.id,
+        type: newProject.type,
+        hourlyRate: newProject.type === 'hourly' ? Number(newProject.hourlyRate || 0) : undefined,
+        fixedPrice: newProject.type === 'fixed' ? Number(newProject.fixedPrice || 0) : undefined,
+        estimatedHours: newProject.estimatedHours ? Number(newProject.estimatedHours) : undefined,
+        startDate: new Date().toISOString(),
+      }
+
+      const created = await fetchJsonSafe('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (!created) throw new Error('Failed to create project')
+
+      const mapped: Project = {
+        id: created.id,
+        name: created.name,
+        client: {
+          id: created.client?.id || '',
+          name: created.client?.name || 'Unknown',
+          company: created.client?.company || undefined,
+          email: created.client?.email || '',
+        },
+        description: created.description || '',
+        status: created.status,
+        type: created.type,
+        hourlyRate: created.hourlyRate || undefined,
+        fixedPrice: created.fixedPrice || undefined,
+        startDate: new Date(created.startDate),
+        endDate: created.endDate ? new Date(created.endDate) : undefined,
+        estimatedHours: created.estimatedHours || undefined,
+        actualHours: created.actualHours || 0,
+        createdAt: new Date(created.createdAt),
+      }
+      setProjects((prev) => [mapped, ...prev])
+      setNewOpen(false)
+      setNewProject({ name: '', clientName: '', clientEmail: '', clientCompany: '', type: 'hourly', hourlyRate: '75', fixedPrice: '', estimatedHours: '' })
+    } catch (err) {
+      console.error('Create project failed', err)
+      alert('Failed to create project. Please check your inputs and try again.')
+    } finally {
+      setCreating(false)
+    }
+  }
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -168,7 +215,7 @@ export default function ProjectsPage() {
   const filteredProjects = projects.filter(project => {
     const matchesSearch = project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       project.client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      project.client.company?.toLowerCase().includes(searchTerm.toLowerCase())
+      (project.client.company || '').toLowerCase().includes(searchTerm.toLowerCase())
     
     const matchesStatus = !statusFilter || project.status === statusFilter
     
@@ -188,7 +235,7 @@ export default function ProjectsPage() {
             Manage your client projects and track progress.
           </p>
         </div>
-        <Dialog>
+        <Dialog open={newOpen} onOpenChange={setNewOpen}>
           <DialogTrigger asChild>
             <Button>
               <Plus className="h-4 w-4 mr-2" />
@@ -199,9 +246,53 @@ export default function ProjectsPage() {
             <DialogHeader>
               <DialogTitle>Create New Project</DialogTitle>
             </DialogHeader>
-            <div className="p-4">
-              <p className="text-gray-600">Project creation form would go here...</p>
+            <div className="grid gap-3">
+              <div>
+                <label className="text-sm">Project Name</label>
+                <Input value={newProject.name} onChange={(e) => setNewProject({ ...newProject, name: e.target.value })} />
+              </div>
+              <div className="grid md:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm">Client Name</label>
+                  <Input value={newProject.clientName} onChange={(e) => setNewProject({ ...newProject, clientName: e.target.value })} />
+                </div>
+                <div>
+                  <label className="text-sm">Client Email</label>
+                  <Input type="email" value={newProject.clientEmail} onChange={(e) => setNewProject({ ...newProject, clientEmail: e.target.value })} />
+                </div>
+              </div>
+              <div>
+                <label className="text-sm">Client Company</label>
+                <Input value={newProject.clientCompany} onChange={(e) => setNewProject({ ...newProject, clientCompany: e.target.value })} />
+              </div>
+              <div className="grid md:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-sm">Type</label>
+                  <select className="w-full border rounded h-9 px-2 bg-transparent" value={newProject.type} onChange={(e) => setNewProject({ ...newProject, type: e.target.value })}>
+                    <option value="hourly">Hourly</option>
+                    <option value="fixed">Fixed</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-sm">Hourly Rate</label>
+                  <Input type="number" value={newProject.hourlyRate} onChange={(e) => setNewProject({ ...newProject, hourlyRate: e.target.value })} disabled={newProject.type !== 'hourly'} />
+                </div>
+                <div>
+                  <label className="text-sm">Fixed Price</label>
+                  <Input type="number" value={newProject.fixedPrice} onChange={(e) => setNewProject({ ...newProject, fixedPrice: e.target.value })} disabled={newProject.type !== 'fixed'} />
+                </div>
+              </div>
+              <div>
+                <label className="text-sm">Estimated Hours</label>
+                <Input type="number" value={newProject.estimatedHours} onChange={(e) => setNewProject({ ...newProject, estimatedHours: e.target.value })} />
+              </div>
             </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setNewOpen(false)}>Cancel</Button>
+              <Button onClick={handleCreate} disabled={creating || !newProject.name || !newProject.clientName || !newProject.clientEmail}>
+                {creating ? 'Creating...' : 'Create Project'}
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>

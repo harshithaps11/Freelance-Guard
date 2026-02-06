@@ -7,7 +7,7 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = "file:./dev.db"
+  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -70,8 +70,8 @@ model Project {
   client      Client    @relation(fields: [clientId], references: [id])
   userId      String
   user        User      @relation(fields: [userId], references: [id])
-  status      String    @default("active") // active, completed, paused
-  type        String    @default("hourly") // hourly, fixed
+  status      ProjectStatus @default(active)
+  type        ProjectType   @default(hourly)
   hourlyRate  Float?
   fixedPrice  Float?
   startDate   DateTime
@@ -115,10 +115,11 @@ model ScopeRequest {
   estimatedHours Float
   hourlyRate     Float
   totalCost      Float
-  status         String @default("pending") // pending, approved, rejected
+  status         ScopeStatus @default(pending)
   clientApproved Boolean @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+  publicToken    String?   @unique
 
   @@map("scope_requests")
 }
@@ -133,12 +134,38 @@ model Invoice {
   amount        Float
   hours         Float    @default(0)
   scopeCharges  Float    @default(0)
-  status        String   @default("draft") // draft, sent, paid, overdue
+  status        InvoiceStatus   @default(draft)
   dueDate       DateTime
   paidAt        DateTime?
   stripePaymentUrl String?
+  publicToken   String?   @unique
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   @@map("invoices")
+}
+
+enum ProjectStatus {
+  active
+  completed
+  paused
+  cancelled
+}
+
+enum ProjectType {
+  hourly
+  fixed
+}
+
+enum ScopeStatus {
+  pending
+  approved
+  rejected
+}
+
+enum InvoiceStatus {
+  draft
+  sent
+  paid
+  overdue
 }

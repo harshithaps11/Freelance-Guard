@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -56,74 +56,32 @@ interface Invoice {
   createdAt: Date
 }
 
-// Mock data
-const mockInvoices: Invoice[] = [
-  {
-    id: '1',
-    invoiceNumber: 'INV-2024-001',
-    project: {
-      name: 'E-commerce Website Redesign',
-      client: { name: 'John Smith', company: 'TechCorp Inc.' }
-    },
-    amount: 3187.50,
-    hours: 42.5,
-    scopeCharges: 600,
-    status: 'paid',
-    dueDate: new Date('2024-01-30'),
-    paidAt: new Date('2024-01-28'),
-    stripePaymentUrl: 'https://checkout.stripe.com/pay/test123',
-    createdAt: new Date('2024-01-15'),
-  },
-  {
-    id: '2',
-    invoiceNumber: 'INV-2024-002',
-    project: {
-      name: 'Mobile App Development',
-      client: { name: 'Sarah Johnson', company: 'StartupXYZ' }
-    },
-    amount: 2100,
-    hours: 28,
-    scopeCharges: 0,
-    status: 'sent',
-    dueDate: new Date('2024-02-15'),
-    stripePaymentUrl: 'https://checkout.stripe.com/pay/test456',
-    createdAt: new Date('2024-01-20'),
-  },
-  {
-    id: '3',
-    invoiceNumber: 'INV-2024-003',
-    project: {
-      name: 'Brand Identity Package',
-      client: { name: 'Mike Davis', company: 'LocalBiz' }
-    },
-    amount: 2500,
-    hours: 38,
-    scopeCharges: 0,
-    status: 'overdue',
-    dueDate: new Date('2024-01-10'),
-    stripePaymentUrl: 'https://checkout.stripe.com/pay/test789',
-    createdAt: new Date('2023-12-20'),
-  },
-  {
-    id: '4',
-    invoiceNumber: 'INV-2024-004',
-    project: {
-      name: 'WordPress Plugin Development',
-      client: { name: 'Emily Chen', company: 'WebAgency Pro' }
-    },
-    amount: 720,
-    hours: 12,
-    scopeCharges: 0,
-    status: 'draft',
-    dueDate: new Date('2024-02-28'),
-    createdAt: new Date('2024-01-25'),
-  },
-]
-
 export default function InvoicesPage() {
-  const [invoices, setInvoices] = useState(mockInvoices)
+  const [invoices, setInvoices] = useState<Invoice[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+
+  useEffect(() => {
+    fetch('/api/invoices')
+      .then((r) => r.json())
+      .then((rows) => {
+        const mapped: Invoice[] = rows.map((inv: any) => ({
+          id: inv.id,
+          invoiceNumber: inv.invoiceNumber,
+          project: { name: inv.project?.name || 'Unknown', client: { name: inv.project?.client?.name || 'Unknown', company: inv.project?.client?.company } },
+          amount: inv.amount,
+          hours: inv.hours,
+          scopeCharges: inv.scopeCharges,
+          status: inv.status,
+          dueDate: new Date(inv.dueDate),
+          paidAt: inv.paidAt ? new Date(inv.paidAt) : undefined,
+          stripePaymentUrl: inv.stripePaymentUrl || undefined,
+          createdAt: new Date(inv.createdAt),
+        }))
+        setInvoices(mapped)
+      })
+      .catch(() => setInvoices([]))
+  }, [])
 
   const getStatusColor = (status: string) => {
     switch (status) {

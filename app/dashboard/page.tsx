@@ -5,94 +5,80 @@ import { StatsCards } from '@/components/dashboard/stats-cards'
 import { ActiveProjects } from '@/components/dashboard/active-projects'
 import { RecentActivity } from '@/components/dashboard/recent-activity'
 
-// Mock data for demonstration
-const mockStats = {
-  activeProjects: 4,
-  weeklyHours: 32.5,
-  pendingRequests: 3,
-  overdueInvoices: 1,
-  monthlyEarnings: 4200,
-  monthlyGoal: 6000,
-}
+// Derived demo stats from API responses
 
-const mockProjects = [
-  {
-    id: '1',
-    name: 'E-commerce Website Redesign',
-    client: { name: 'TechCorp Inc.', company: 'TechCorp' },
-    status: 'active',
-    type: 'hourly' as const,
-    hourlyRate: 75,
-    estimatedHours: 80,
-    actualHours: 42.5,
-    dueDate: new Date('2024-02-15'),
-    isTimerRunning: false,
-  },
-  {
-    id: '2',
-    name: 'Mobile App Development',
-    client: { name: 'StartupXYZ', company: 'StartupXYZ' },
-    status: 'active',
-    type: 'fixed' as const,
-    fixedPrice: 5000,
-    estimatedHours: 60,
-    actualHours: 28,
-    dueDate: new Date('2024-03-01'),
-    isTimerRunning: true,
-  },
-  {
-    id: '3',
-    name: 'Brand Identity Package',
-    client: { name: 'LocalBiz', company: 'Local Business' },
-    status: 'paused',
-    type: 'fixed' as const,
-    fixedPrice: 2500,
-    estimatedHours: 40,
-    actualHours: 15,
-    isTimerRunning: false,
-  },
-]
+const initialProjects: any[] = []
 
-const mockActivities = [
-  {
-    id: '1',
-    type: 'scope_request' as const,
-    title: 'Additional feature request approved',
-    description: 'Client requested extra payment gateway integration',
-    timestamp: new Date(Date.now() - 30 * 60 * 1000),
-    status: 'approved',
-    project: 'E-commerce Website Redesign',
-  },
-  {
-    id: '2',
-    type: 'time_log' as const,
-    title: 'Work session completed',
-    description: 'Frontend development - 3.5 hours logged',
-    timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
-    project: 'Mobile App Development',
-  },
-  {
-    id: '3',
-    type: 'invoice' as const,
-    title: 'Invoice sent',
-    description: 'Invoice #2024-001 sent to TechCorp Inc.',
-    timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000),
-    status: 'sent',
-    project: 'E-commerce Website Redesign',
-  },
-  {
-    id: '4',
-    type: 'payment' as const,
-    title: 'Payment received',
-    description: '$1,250.00 received via Stripe',
-    timestamp: new Date(Date.now() - 48 * 60 * 60 * 1000),
-    status: 'paid',
-    project: 'Brand Identity Package',
-  },
-]
+const initialActivities: any[] = []
 
 export default function DashboardPage() {
-  const [projects, setProjects] = useState(mockProjects)
+  const [projects, setProjects] = useState(initialProjects)
+  const [stats, setStats] = useState({ activeProjects: 0, weeklyHours: 0, pendingRequests: 0, overdueInvoices: 0, monthlyEarnings: 0, monthlyGoal: 6000 })
+  const [activities, setActivities] = useState(initialActivities)
+
+  useEffect(() => {
+    const safeFetchJson = async (url: string) => {
+      try {
+        const res = await fetch(url)
+        if (!res.ok) return []
+        const text = await res.text()
+        return text ? JSON.parse(text) : []
+      } catch {
+        return []
+      }
+    }
+
+    Promise.all([
+      safeFetchJson('/api/projects'),
+      safeFetchJson('/api/time-logs'),
+      safeFetchJson('/api/scope-requests'),
+      safeFetchJson('/api/invoices'),
+    ]).then(([p, t, s, i]) => {
+      const mappedProjects = (p || []).map((x: any) => ({
+        id: x.id,
+        name: x.name,
+        client: { name: x.client?.name || 'Unknown', company: x.client?.company },
+        status: x.status,
+        type: x.type,
+        hourlyRate: x.hourlyRate,
+        fixedPrice: x.fixedPrice,
+        estimatedHours: x.estimatedHours,
+        actualHours: x.actualHours,
+        dueDate: x.endDate ? new Date(x.endDate) : undefined,
+        isTimerRunning: false,
+      }))
+      setProjects(mappedProjects)
+
+      // Expose first project id for quick demo create in Scope page
+      if (mappedProjects[0]) (window as any).__firstProjectId = mappedProjects[0].id
+
+      const weeklyMs = 7 * 24 * 60 * 60 * 1000
+      const now = Date.now()
+      const weeklyHours = (t || [])
+        .filter((log: any) => new Date(log.startTime).getTime() > now - weeklyMs)
+        .reduce((sum: number, log: any) => sum + (log.duration || 0), 0) / 60
+      const pendingRequests = (s || []).filter((x: any) => x.status === 'pending').length
+      const overdueInvoices = (i || []).filter((x: any) => x.status === 'overdue').length
+      const monthlyEarnings = (i || [])
+        .filter((x: any) => x.status === 'paid' && new Date(x.paidAt || x.createdAt).getMonth() === new Date().getMonth())
+        .reduce((sum: number, inv: any) => sum + inv.amount, 0)
+      setStats({
+        activeProjects: mappedProjects.filter((p: any) => p.status === 'active').length,
+        weeklyHours,
+        pendingRequests,
+        overdueInvoices,
+        monthlyEarnings,
+        monthlyGoal: 6000,
+      })
+
+      const recentActivities = [
+        ...(t || []).slice(0, 3).map((log: any) => ({ id: 't' + log.id, type: 'time_log' as const, title: 'Work session completed', description: log.description || 'Time logged', timestamp: new Date(log.startTime), project: log.project?.name })),
+        ...(s || []).slice(0, 3).map((req: any) => ({ id: 's' + req.id, type: 'scope_request' as const, title: 'Scope request updated', description: req.title, timestamp: new Date(req.createdAt), status: req.status, project: req.project?.name })),
+        ...(i || []).slice(0, 3).map((inv: any) => ({ id: 'i' + inv.id, type: 'invoice' as const, title: 'Invoice status', description: inv.invoiceNumber, timestamp: new Date(inv.createdAt), status: inv.status, project: inv.project?.name })),
+      ]
+      setActivities(recentActivities)
+    })
+  }, [])
 
   const handleStartTimer = (projectId: string) => {
     setProjects(prev => prev.map(p => 
@@ -119,15 +105,11 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      <StatsCards stats={mockStats} />
+      <StatsCards stats={stats} />
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <ActiveProjects
-          projects={projects}
-          onStartTimer={handleStartTimer}
-          onStopTimer={handleStopTimer}
-        />
-        <RecentActivity activities={mockActivities} />
+        <ActiveProjects projects={projects} onStartTimer={handleStartTimer} onStopTimer={handleStopTimer} />
+        <RecentActivity activities={activities} />
       </div>
     </div>
   )
